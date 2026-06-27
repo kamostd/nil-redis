@@ -7,12 +7,17 @@ import (
 
 func NewModule() fx.Option {
 	return fx.Module(
-		"player repository",
+		"repository",
 
-		fx.Provide(NewPlayerRepo),
+		fx.Provide(
+			NewPlayerRepo,
+			NewLeaderboard,
+			NewHistoryRepo,
+			NewStatsRepo,
+		),
 
 		fx.Invoke(func(logger *zap.Logger) *zap.Logger {
-			return logger.With(zap.String("module", "player repo"))
+			return logger.With(zap.String("module", "repository"))
 		}),
 	)
 }

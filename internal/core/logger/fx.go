@@ -19,7 +19,7 @@ func ProvideLogger(lc fx.Lifecycle) (*zap.Logger, error) {
 		fx.Hook{
 			OnStop: func(ctx context.Context) error {
 				if err := logger.Sync(); err != nil {
-					if err != nil && !errors.Is(err, syscall.EINVAL) {
+					if !errors.Is(err, syscall.EINVAL) {
 						return err
 					}
 				}

@@ -7,9 +7,9 @@ func NewModule() fx.Option {
 		"server",
 
 		fx.Provide(
-			NewEngine,
-			NewGroupRouter,
-			NewHttpServer,
+			NewRouterGroup,
+			NewGinEngine,
+			NewHTTPServer,
 		),
 	)
 }

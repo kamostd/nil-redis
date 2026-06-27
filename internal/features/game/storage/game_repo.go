@@ -2,39 +2,42 @@ package repository
 
 import (
 	"context"
+	"nil-redis/internal/domain"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
+const historyTableName = "games:history"
+
 type ListClient interface {
 	LPush(ctx context.Context, key string, values ...interface{}) *redis.IntCmd
 	LTrim(ctx context.Context, key string, start, stop int64) *redis.StatusCmd
+
+	LRange(ctx context.Context, key string, start, stop int64) *redis.StringSliceCmd
 }
 
-type GameRepo struct {
+type HistoryRepo struct {
 	client ListClient
 	logger *zap.Logger
 }
 
-func NewGameRepo(client ListClient, logger *zap.Logger) *GameRepo {
-	return &GameRepo{
+func NewHistoryRepo(client ListClient, logger *zap.Logger) *HistoryRepo {
+	return &HistoryRepo{
 		client: client,
 		logger: logger,
 	}
 }
 
-func (g GameRepo) SaveGame(
-	ctx context.Context,
-	historyNote string,
-) error {
+// TODO: вынести trim в отдельную функцию чтобы задавать range отделения
+func (h HistoryRepo) SaveGame(ctx context.Context, historyNote string) error {
 	ctxSave, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	prepLpush := time.Now()
-	if _, err := g.client.LPush(ctxSave, "games", historyNote).Result(); err != nil {
-		g.logger.Error(
+	if _, err := h.client.LPush(ctxSave, historyTableName, historyNote).Result(); err != nil {
+		h.logger.Error(
 			"SaveGame failed",
 			zap.String("redis request type", "LPush"),
 			zap.Duration("duration", time.Since(prepLpush)),
@@ -44,7 +47,7 @@ func (g GameRepo) SaveGame(
 		return err
 	}
 
-	g.logger.Info(
+	h.logger.Info(
 		"SaveGame success",
 		zap.String("redis request type", "LPush"),
 		zap.Duration("duration", time.Since(prepLpush)),
@@ -54,8 +57,8 @@ func (g GameRepo) SaveGame(
 	defer cancelTrim()
 
 	prepTirm := time.Now()
-	if _, err := g.client.LTrim(ctxTrim, "games", 0, 9).Result(); err != nil {
-		g.logger.Error(
+	if _, err := h.client.LTrim(ctxTrim, historyTableName, 0, 9).Result(); err != nil {
+		h.logger.Error(
 			"SaveGame failed",
 			zap.String("redis request type", "LTrim"),
 			zap.Duration("duration", time.Since(prepTirm)),
@@ -65,11 +68,50 @@ func (g GameRepo) SaveGame(
 		return err
 	}
 
-	g.logger.Info(
+	h.logger.Info(
 		"SaveGame success",
 		zap.String("redis request type", "LTrim"),
 		zap.Duration("duration", time.Since(prepLpush)),
 	)
 
 	return nil
+}
+
+func (h HistoryRepo) ListHistory(ctx context.Context) ([]domain.HistoryNote, error) {
+	ctxSave, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	prepLpush := time.Now()
+
+	storageNotes, err := h.client.LRange(ctxSave, historyTableName, 0, 9).Result()
+	if err != nil {
+		h.logger.Error(
+			"ListHistory failed",
+			zap.String("redis request type", "Range"),
+			zap.Duration("duration", time.Since(prepLpush)),
+			zap.Error(err),
+		)
+
+		return nil, err
+	}
+
+	h.logger.Info(
+		"ListHistory success",
+		zap.String("redis request type", "Range"),
+		zap.Duration("duration", time.Since(prepLpush)),
+	)
+
+	notes := make([]domain.HistoryNote, 0, len(storageNotes))
+
+	for _, storageNote := range storageNotes {
+		note, err := domain.NewNoteByString(storageNote)
+		if err != nil {
+			return nil, err
+		}
+
+		notes = append(notes, note)
+	}
+
+	return notes, nil
+
 }

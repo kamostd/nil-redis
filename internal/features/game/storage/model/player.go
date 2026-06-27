@@ -1,7 +1,7 @@
 package model
 
 type Player struct {
-	TotalGames   int    `redis:"total_games"`
+	TotalGames   int    `redis:"games_played"`
 	BestScore    int    `redis:"best_score"`
 	RegisteredAt string `redis:"registered_at"`
 }

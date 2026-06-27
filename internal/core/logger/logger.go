@@ -12,7 +12,7 @@ import (
 )
 
 func New() (*zap.Logger, func() error, error) {
-	zapLevel, err := zapcore.ParseLevel("INFO")
+	zapLevel, err := zapcore.ParseLevel("DEBUG")
 	if err != nil {
 		return nil, nil, err
 	}
