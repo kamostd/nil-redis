@@ -8,6 +8,7 @@ import (
 	"nil-redis/internal/core/logger"
 	"nil-redis/internal/core/server"
 	"nil-redis/internal/core/swagger"
+	txmanager "nil-redis/internal/core/tools/tx_manager"
 	repository "nil-redis/internal/features/game/storage"
 	"nil-redis/internal/features/game/transport"
 	"nil-redis/internal/features/game/usecase"
@@ -23,7 +24,7 @@ func provideClientLeaderboard(client *redis.Client) repository.ClientLeaderboard
 func provideHmapClient(client *redis.Client) repository.HmapClient               { return client }
 func provideHincrClient(client *redis.Client) repository.HincrClient             { return client }
 
-func provideGameRepo(repo *repository.Game) usecase.GameRepo { return repo }
+func provideGameRepo(repo *repository.Player) usecase.GameRepo { return repo }
 func provideLeaderboardSaverGeter(repo *repository.Leaderboard) usecase.LeaderboardSaverGeter {
 	return repo
 }
@@ -32,7 +33,7 @@ func provideStatsUpdater(repo *repository.StatsRepo) usecase.StatsUpdater   { re
 
 func provideHistoryLister(repo *repository.HistoryRepo) usecase.HistoryLister         { return repo }
 func provideLeaderboardLister(repo *repository.Leaderboard) usecase.LeaderboardLister { return repo }
-func providePlayerGeter(repo *repository.Game) usecase.PlayerGeter                    { return repo }
+func providePlayerGeter(repo *repository.Player) usecase.PlayerGeter                  { return repo }
 func provideRankScoreGeter(repo *repository.Leaderboard) usecase.RankScoreGeter       { return repo }
 func provideStatsGeter(repo *repository.StatsRepo) usecase.StatsGeter                 { return repo }
 
@@ -48,6 +49,14 @@ func provideStatsService(service *usecase.StatsService) transport.StatsService {
 	return service
 }
 
+func provideTxManager(trm *txmanager.Trm) usecase.TxManager {
+	return trm
+}
+
+// func providePipliner(client *redis.Client) txmanager.Pipeliner {
+// 	return client
+// }
+
 func App() *fx.App {
 	return fx.New(
 		logger.NewModule(),
@@ -56,6 +65,11 @@ func App() *fx.App {
 				Logger: logger,
 			}
 		}),
+
+		fx.Provide(
+			provideTxManager,
+			// providePipliner,
+		),
 
 		fx.Provide(
 			provideListClient,
@@ -84,6 +98,7 @@ func App() *fx.App {
 			provideStatsService,
 		),
 
+		txmanager.NewModule(),
 		swagger.NewModule(),
 		usecase.NewModule(),
 		repository.NewModule(),

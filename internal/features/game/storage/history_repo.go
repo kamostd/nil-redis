@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	txmanager "nil-redis/internal/core/tools/tx_manager"
 	"nil-redis/internal/domain"
 	"time"
 
@@ -16,6 +17,15 @@ type ListClient interface {
 	LTrim(ctx context.Context, key string, start, stop int64) *redis.StatusCmd
 
 	LRange(ctx context.Context, key string, start, stop int64) *redis.StringSliceCmd
+}
+
+func ctxListExtractor(ctx context.Context, client ListClient) ListClient {
+	pipe, ok := ctx.Value(txmanager.PipelineKey).(redis.Pipeline)
+	if !ok {
+		return client
+	}
+
+	return pipe
 }
 
 type HistoryRepo struct {
@@ -35,8 +45,10 @@ func (h HistoryRepo) SaveGame(ctx context.Context, historyNote string) error {
 	ctxSave, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxListExtractor(ctx, h.client)
+
 	prepLpush := time.Now()
-	if _, err := h.client.LPush(ctxSave, historyTableName, historyNote).Result(); err != nil {
+	if _, err := client.LPush(ctxSave, historyTableName, historyNote).Result(); err != nil {
 		h.logger.Error(
 			"SaveGame failed",
 			zap.String("redis request type", "LPush"),
@@ -57,7 +69,7 @@ func (h HistoryRepo) SaveGame(ctx context.Context, historyNote string) error {
 	defer cancelTrim()
 
 	prepTirm := time.Now()
-	if _, err := h.client.LTrim(ctxTrim, historyTableName, 0, 9).Result(); err != nil {
+	if _, err := client.LTrim(ctxTrim, historyTableName, 0, 9).Result(); err != nil {
 		h.logger.Error(
 			"SaveGame failed",
 			zap.String("redis request type", "LTrim"),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	txmanager "nil-redis/internal/core/tools/tx_manager"
 	"nil-redis/internal/domain"
 	"nil-redis/internal/features/game/storage/mapper"
 	"nil-redis/internal/features/game/storage/model"
@@ -26,35 +27,47 @@ type HmapClient interface {
 	Exists(ctx context.Context, keys ...string) *redis.IntCmd
 }
 
-type Game struct {
+func ctxPlayerExtractor(ctx context.Context, client HmapClient) HmapClient {
+	pipe, ok := ctx.Value(txmanager.PipelineKey).(redis.Pipeline)
+
+	if !ok {
+		return client
+	}
+
+	return pipe
+}
+
+type Player struct {
 	client HmapClient
 	logger *zap.Logger
 }
 
-func NewPlayerRepo(client HmapClient, logger *zap.Logger) *Game {
-	return &Game{
+func NewPlayerRepo(client HmapClient, logger *zap.Logger) *Player {
+	return &Player{
 		client: client,
 		logger: logger,
 	}
 }
 
-func (g Game) WriteRegistrationDate(
+func (p Player) WriteRegistrationDate(
 	ctx context.Context,
 	name string,
 	registredAt time.Time,
 ) error {
 	register := map[string]string{"registered_at": registredAt.Format(time.DateOnly)}
 
+	client := ctxPlayerExtractor(ctx, p.client)
+
 	ctxSave, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	prep := time.Now()
-	if _, err := g.client.HSet(
+	if _, err := client.HSet(
 		ctxSave,
 		fmt.Sprintf("%s:%s", playerHmapName, name),
 		register,
 	).Result(); err != nil {
-		g.logger.Error(
+		p.logger.Error(
 			"SavePlayer failed",
 			zap.String("redis request type", "HSet"),
 			zap.Error(err),
@@ -64,7 +77,7 @@ func (g Game) WriteRegistrationDate(
 		return err
 	}
 
-	g.logger.Info(
+	p.logger.Info(
 		"SavePlayer success",
 		zap.String("redis request type", "HSet"),
 		zap.Duration("duration", time.Since(prep)),
@@ -73,18 +86,20 @@ func (g Game) WriteRegistrationDate(
 	return nil
 }
 
-func (g Game) UpdateGamesPlayed(ctx context.Context, name string) error {
+func (p Player) UpdateGamesPlayed(ctx context.Context, name string) error {
 	ctxUpdate, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxPlayerExtractor(ctx, p.client)
+
 	prep := time.Now()
-	if _, err := g.client.HIncrBy(
+	if _, err := client.HIncrBy(
 		ctxUpdate,
 		fmt.Sprintf("%s:%s", playerHmapName, name),
 		"games_played",
 		1,
 	).Result(); err != nil {
-		g.logger.Error(
+		p.logger.Error(
 			"UpdateGamesPlayed failed",
 			zap.String("redis request type", "HincrBy"),
 			zap.Duration("duration", time.Since(prep)),
@@ -94,7 +109,7 @@ func (g Game) UpdateGamesPlayed(ctx context.Context, name string) error {
 		return err
 	}
 
-	g.logger.Info(
+	p.logger.Info(
 		"UpdateGamesPlayed failed",
 		zap.String("redis request type", "HincrBy"),
 		zap.Duration("duration", time.Since(prep)),
@@ -103,13 +118,15 @@ func (g Game) UpdateGamesPlayed(ctx context.Context, name string) error {
 	return nil
 }
 
-func (g Game) GetBestScoreByName(ctx context.Context, name string) (int, error) {
+func (p Player) GetBestScoreByName(ctx context.Context, name string) (int, error) {
 	ctxUpdate, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxPlayerExtractor(ctx, p.client)
+
 	prep := time.Now()
 
-	result, err := g.client.HGet(
+	result, err := client.HGet(
 		ctxUpdate,
 		fmt.Sprintf("%s:%s", playerHmapName, name),
 		"best_score",
@@ -119,7 +136,7 @@ func (g Game) GetBestScoreByName(ctx context.Context, name string) (int, error) 
 			return -1, nil
 		}
 
-		g.logger.Error(
+		p.logger.Error(
 			"GetBestScoreByName failed",
 			zap.String("redis request type", "HGet"),
 			zap.Duration("duration", time.Since(prep)),
@@ -129,7 +146,7 @@ func (g Game) GetBestScoreByName(ctx context.Context, name string) (int, error) 
 		return -1, err
 	}
 
-	g.logger.Info(
+	p.logger.Info(
 		"GetBestScoreByName success",
 		zap.String("redis request type", "HGet"),
 		zap.Duration("duration", time.Since(prep)),
@@ -143,18 +160,20 @@ func (g Game) GetBestScoreByName(ctx context.Context, name string) (int, error) 
 	return bestScore, nil
 }
 
-func (g Game) UpdateBestScore(ctx context.Context, name string, score int) error {
+func (p Player) UpdateBestScore(ctx context.Context, name string, score int) error {
 	ctxUpdate, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxPlayerExtractor(ctx, p.client)
+
 	prep := time.Now()
-	if _, err := g.client.HSet(
+	if _, err := client.HSet(
 		ctxUpdate,
 		fmt.Sprintf("%s:%s", playerHmapName, name),
 		"best_score",
 		score,
 	).Result(); err != nil {
-		g.logger.Error(
+		p.logger.Error(
 			"UpdateBestScore failed",
 			zap.String("redis request type", "HSet"),
 			zap.Duration("duration", time.Since(prep)),
@@ -164,7 +183,7 @@ func (g Game) UpdateBestScore(ctx context.Context, name string, score int) error
 		return err
 	}
 
-	g.logger.Info(
+	p.logger.Info(
 		"UpdateBestScore failed",
 		zap.String("redis request type", "HSet"),
 		zap.Duration("duration", time.Since(prep)),
@@ -173,15 +192,15 @@ func (g Game) UpdateBestScore(ctx context.Context, name string, score int) error
 	return nil
 }
 
-func (g Game) IsExists(ctx context.Context, name string) (bool, error) {
+func (p Player) IsExists(ctx context.Context, name string) (bool, error) {
 	ctxGet, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	prep := time.Now()
-	count, err := g.client.Exists(ctxGet, fmt.Sprintf("%s:%s", playerHmapName, name)).Result()
+	count, err := p.client.Exists(ctxGet, fmt.Sprintf("%s:%s", playerHmapName, name)).Result()
 	after := time.Since(prep)
 	if err != nil {
-		g.logger.Error(
+		p.logger.Error(
 			"IsExists failed",
 			zap.String("redis request type", "HGetAll"),
 			zap.Duration("duration", after),
@@ -191,7 +210,7 @@ func (g Game) IsExists(ctx context.Context, name string) (bool, error) {
 		return false, err
 	}
 
-	g.logger.Info(
+	p.logger.Info(
 		"IsExists success",
 		zap.String("redis request type", "HGetAll"),
 		zap.Duration("duration", after),
@@ -204,14 +223,14 @@ func (g Game) IsExists(ctx context.Context, name string) (bool, error) {
 	return false, nil
 }
 
-func (g Game) GetPlayerByName(ctx context.Context, name string) (domain.Player, error) {
+func (p Player) GetPlayerByName(ctx context.Context, name string) (domain.Player, error) {
 	ctxGet, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	var player model.Player
 	prep := time.Now()
-	if err := g.client.HGetAll(ctxGet, fmt.Sprintf("%s:%s", playerHmapName, name)).Scan(&player); err != nil {
-		g.logger.Error(
+	if err := p.client.HGetAll(ctxGet, fmt.Sprintf("%s:%s", playerHmapName, name)).Scan(&player); err != nil {
+		p.logger.Error(
 			"GetPlayerByName failed",
 			zap.String("redis request type", "HGetAll"),
 			zap.Duration("duration", time.Since(prep)),
@@ -220,22 +239,22 @@ func (g Game) GetPlayerByName(ctx context.Context, name string) (domain.Player, 
 		return domain.Player{}, err
 	}
 
-	g.logger.Debug("redis player", zap.Any("player", player))
+	p.logger.Debug("redis player", zap.Any("player", player))
 
-	g.logger.Info(
+	p.logger.Info(
 		"GetPlayerByName success",
 		zap.String("redis request type", "HGetAll"),
 		zap.Duration("duration", time.Since(prep)),
 	)
 
-	g.logger.Debug("GetPlayerByName storage player", zap.Any("player", player))
+	p.logger.Debug("GetPlayerByName storage player", zap.Any("player", player))
 
 	parsedPlayer, err := mapper.ModelPlayerToDomain(player, name)
 	if err != nil {
 		return domain.Player{}, err
 	}
 
-	g.logger.Debug("GetPlayerByName mapping to domain", zap.Any("time", parsedPlayer.RegisteredAt()))
+	p.logger.Debug("GetPlayerByName mapping to domain", zap.Any("time", parsedPlayer.RegisteredAt()))
 
 	return parsedPlayer, nil
 }

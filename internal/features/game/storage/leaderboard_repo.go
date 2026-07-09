@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	txmanager "nil-redis/internal/core/tools/tx_manager"
 	"nil-redis/internal/domain"
 	"time"
 
@@ -20,6 +21,16 @@ type ClientLeaderboard interface {
 	ZScore(ctx context.Context, key, member string) *redis.FloatCmd
 }
 
+func ctxLeaderboardExtractor(ctx context.Context, client ClientLeaderboard) ClientLeaderboard {
+	pipe, ok := ctx.Value(txmanager.PipelineKey).(redis.Pipeline)
+
+	if !ok {
+		return client
+	}
+
+	return pipe
+}
+
 type Leaderboard struct {
 	client ClientLeaderboard
 	logger *zap.Logger
@@ -36,8 +47,10 @@ func (l Leaderboard) SaveOrUpdateMember(ctx context.Context, name string, score 
 	ctxSaveOrUpdate, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxLeaderboardExtractor(ctx, l.client)
+
 	prep := time.Now()
-	result, err := l.client.ZIncrBy(
+	result, err := client.ZIncrBy(
 		ctxSaveOrUpdate,
 		leaderboardZName,
 		float64(score),
@@ -67,8 +80,10 @@ func (l Leaderboard) RankByName(ctx context.Context, name string) (int, error) {
 	ctxRank, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxLeaderboardExtractor(ctx, l.client)
+
 	prep := time.Now()
-	rank, err := l.client.ZRevRank(ctxRank, leaderboardZName, name).Result()
+	rank, err := client.ZRevRank(ctxRank, leaderboardZName, name).Result()
 	if err != nil {
 		l.logger.Error(
 			"RankByName failed",

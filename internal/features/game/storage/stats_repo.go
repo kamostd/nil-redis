@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	txmanager "nil-redis/internal/core/tools/tx_manager"
 	"strconv"
 	"time"
 
@@ -15,6 +16,15 @@ type HincrClient interface {
 	Incr(ctx context.Context, key string) *redis.IntCmd
 
 	Get(ctx context.Context, key string) *redis.StringCmd
+}
+
+func ctxHincrClient(ctx context.Context, client HincrClient) HincrClient {
+	pipe, ok := ctx.Value(txmanager.PipelineKey).(redis.Pipeline)
+	if !ok {
+		return client
+	}
+
+	return pipe
 }
 
 type StatsRepo struct {
@@ -33,8 +43,10 @@ func (s StatsRepo) UpdateTotalGame(ctx context.Context) error {
 	ctxIncr, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
+	client := ctxHincrClient(ctx, s.client)
+
 	prep := time.Now()
-	if _, err := s.client.Incr(ctxIncr, statsTotalGamesKeyName).Result(); err != nil {
+	if _, err := client.Incr(ctxIncr, statsTotalGamesKeyName).Result(); err != nil {
 		s.logger.Error(
 			"UpdateTotalGame failed",
 			zap.String("redis request type", "HIncrBy"),
