@@ -1,0 +1,159 @@
+basePath: /api/
+definitions:
+  dto.GetHistoryResponse:
+    properties:
+      name:
+        type: string
+      played_at:
+        type: string
+      score:
+        type: integer
+    type: object
+  dto.GetLeadersResponse:
+    properties:
+      name:
+        type: string
+      rank:
+        type: integer
+      score:
+        type: integer
+    type: object
+  dto.GetProfileResponse:
+    properties:
+      best_score:
+        type: integer
+      games_played:
+        type: integer
+      name:
+        type: string
+      rank:
+        type: integer
+      registered_at:
+        type: string
+      total_score:
+        type: integer
+    type: object
+  dto.GetTotalGameResponse:
+    properties:
+      total_games:
+        type: integer
+    type: object
+  dto.ResultRequest:
+    properties:
+      name:
+        type: string
+      score:
+        type: integer
+    type: object
+  dto.ResultResponse:
+    properties:
+      name:
+        type: string
+      new_total_score:
+        type: integer
+      rank:
+        type: integer
+    type: object
+externalDocs:
+  description: OpenAPI
+  url: https://swagger.io/resources/open-api/
+host: localhost:8080
+info:
+  contact: {}
+  description: This is a project for getting acquainted with Redis.
+  title: Leaderboard API
+  version: "1.0"
+paths:
+  /game/result:
+    post:
+      consumes:
+      - application/json
+      description: register new player and save score or save score in exist player
+      parameters:
+      - description: Game result with score
+        in: body
+        name: game_result
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ResultRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ResultResponse'
+      summary: Save game result
+      tags:
+      - game
+  /history:
+    get:
+      consumes:
+      - application/json
+      description: shows the last 10 games played
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.GetHistoryResponse'
+            type: array
+      summary: get games history
+  /leaderboard:
+    get:
+      consumes:
+      - application/json
+      description: shows the specified number of leaders
+      parameters:
+      - description: leaders count
+        in: query
+        name: top
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.GetLeadersResponse'
+            type: array
+      summary: get leaderboard
+  /player/{name}:
+    get:
+      consumes:
+      - application/json
+      description: get player profile by name
+      parameters:
+      - description: Player name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GetProfileResponse'
+      summary: show palayer profile
+      tags:
+      - player
+  /stats:
+    get:
+      consumes:
+      - application/json
+      description: get int
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GetTotalGameResponse'
+      summary: show total_game count
+swagger: "2.0"
